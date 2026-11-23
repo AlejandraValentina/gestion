@@ -1,6 +1,7 @@
 package uy.caja.app
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -8,6 +9,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 
 import org.junit.Before
 import org.junit.Test
@@ -75,6 +78,52 @@ class PersistenciaCajaTest {
         assertEquals(0, dao.habitaciones(jornada.id).first().size)
         assertEquals(0, dao.articulos().first().size)
 
+    }
+
+    @Test fun importacionEscaneadaEsAtomicaIdempotenteYPermiteHabitacionRepetida() = runBlocking {
+        dao.crearJornada(Jornada(fecha = "2026-11-23"))
+        val jornada = dao.jornadaFecha("2026-11-23")!!
+        val lote = "scan-test-${System.nanoTime()}"
+        val filas = listOf(
+            Habitacion(jornadaId = jornada.id, numero = "101", persona = "Ana", importe = 500, pago = "SIN_CLASIFICAR"),
+            Habitacion(jornadaId = jornada.id, numero = "101", persona = "Luis", importe = 800, pago = "TARJETA")
+        )
+
+        assertTrue(dao.importarHabitaciones(lote, filas))
+        assertFalse(dao.importarHabitaciones(lote, filas))
+
+        val guardadas = dao.habitaciones(jornada.id).first()
+        assertEquals(2, guardadas.size)
+        assertEquals(setOf(500L, 800L), guardadas.map { it.importe }.toSet())
+        assertTrue(guardadas.all { it.scanBatchId == lote })
+    }
+
+    @Test fun migrationV1V2ConservaMovimientosYaGuardados() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val legacyName = "caja-v1-${System.nanoTime()}.db"
+        nombreDb = legacyName
+        val legacyFile = context.getDatabasePath(legacyName)
+        legacyFile.parentFile?.mkdirs()
+        val legacy = SQLiteDatabase.openOrCreateDatabase(legacyFile, null)
+        legacy.execSQL("CREATE TABLE jornadas (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, fecha TEXT NOT NULL)")
+        legacy.execSQL("CREATE UNIQUE INDEX index_jornadas_fecha ON jornadas(fecha)")
+        legacy.execSQL("CREATE TABLE habitaciones (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, jornadaId INTEGER NOT NULL, numero TEXT NOT NULL, persona TEXT NOT NULL, importe INTEGER NOT NULL, pago TEXT NOT NULL)")
+        legacy.execSQL("CREATE TABLE articulos (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, nombre TEXT NOT NULL, precio INTEGER NOT NULL, activo INTEGER NOT NULL)")
+        legacy.execSQL("CREATE TABLE ventas (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, jornadaId INTEGER NOT NULL, articuloId INTEGER NOT NULL, articuloNombre TEXT NOT NULL, cantidad INTEGER NOT NULL, precioAplicado INTEGER NOT NULL, pago TEXT NOT NULL)")
+        legacy.execSQL("CREATE TABLE cierres (jornadaId INTEGER NOT NULL PRIMARY KEY, efectivo INTEGER, tarjeta INTEGER)")
+        legacy.execSQL("INSERT INTO jornadas (id, fecha) VALUES (1, '2026-11-23')")
+        legacy.execSQL("INSERT INTO habitaciones (id, jornadaId, numero, persona, importe, pago) VALUES (1, 1, '101', 'Ana', 1200, 'SIN_CLASIFICAR')")
+        legacy.version = 1
+        legacy.close()
+
+        db = Room.databaseBuilder(context, CajaDb::class.java, legacyName)
+            .addMigrations(CajaDb.MIGRATION_1_2)
+            .build()
+        dao = db.dao()
+        val migrated = dao.habitaciones(1).first().single()
+        assertEquals("101", migrated.numero)
+        assertEquals(1200L, migrated.importe)
+        assertEquals(null, migrated.scanBatchId)
     }
 }
 

@@ -28,7 +28,7 @@ class MainActivity : ComponentActivity() {
                     background = Color(0xFFF4FBF8)
                 )
             ) {
-                CajaApp(vm)
+                CajaApp(vm, dao, onExit = { finish() })
             }
         }
     }

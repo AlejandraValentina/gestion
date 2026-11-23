@@ -8,6 +8,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,7 +23,7 @@ import uy.caja.app.data.Habitacion
 import uy.caja.app.ui.CajaViewModel
 
 @Composable
-fun HabitacionesScreen(habitaciones: List<Habitacion>, vm: CajaViewModel) {
+fun HabitacionesScreen(habitaciones: List<Habitacion>, vm: CajaViewModel, onScan: () -> Unit) {
     var editar by remember { mutableStateOf<Habitacion?>(null) }
     var nueva by remember { mutableStateOf(false) }
     var borrar by remember { mutableStateOf<Habitacion?>(null) }
@@ -32,9 +33,16 @@ fun HabitacionesScreen(habitaciones: List<Habitacion>, vm: CajaViewModel) {
                 Text("Habitaciones", style = MaterialTheme.typography.titleLarge)
                 Text("${habitaciones.size} ingresos", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Button(onClick = { nueva = true }) { Text("Agregar") }
         }
         Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onScan, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Outlined.PhotoCamera, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text("Escanear cuaderno", maxLines = 1, style = MaterialTheme.typography.labelLarge)
+            }
+            Button(onClick = { nueva = true }) { Text("Agregar") }
+        }
         if (habitaciones.isEmpty()) MensajeVacio("Agregá el primer ingreso de esta jornada.")
         else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(habitaciones, key = { it.id }) { item ->

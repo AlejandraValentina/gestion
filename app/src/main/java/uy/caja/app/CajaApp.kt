@@ -19,6 +19,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import uy.caja.app.ui.CajaViewModel
+import uy.caja.app.data.CajaDao
+import uy.caja.app.ui.scan.HabitacionesScanFlow
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -27,10 +29,12 @@ private data class Destino(val label: String, val icon: ImageVector, val index: 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CajaApp(vm: CajaViewModel) {
+fun CajaApp(vm: CajaViewModel, dao: CajaDao, onExit: () -> Unit) {
     val jornada by vm.jornada.collectAsStateWithLifecycle()
     val articulos by vm.articulos.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    var confirmarSalida by rememberSaveable { mutableStateOf(false) }
+    var escaneandoCuaderno by rememberSaveable { mutableStateOf(false) }
     val destinos = remember {
         listOf(
             Destino("Resumen", Icons.Outlined.Home, 0),
@@ -39,11 +43,18 @@ fun CajaApp(vm: CajaViewModel) {
             Destino("Cierre", Icons.Outlined.ReceiptLong, 3)
         )
     }
-    BackHandler(enabled = tab != 0) { tab = 0 }
+    BackHandler(enabled = tab != 0 || escaneandoCuaderno) {
+        if (escaneandoCuaderno) escaneandoCuaderno = false else tab = 0
+    }
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Gestión de Caja", fontWeight = FontWeight.SemiBold) },
+                actions = {
+                    TextButton(onClick = { confirmarSalida = true }) {
+                        Text("Salir", color = MaterialTheme.colorScheme.onPrimary)
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     titleContentColor = MaterialTheme.colorScheme.onPrimary
@@ -73,11 +84,37 @@ fun CajaApp(vm: CajaViewModel) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             } else when (tab) {
                 0 -> ResumenDiario(jornada.habitaciones, jornada.ventas, jornada.cierre) { tab = it }
-                1 -> HabitacionesScreen(jornada.habitaciones, vm)
+                1 -> {
+                    val jornadaActual = jornada.jornada
+                    if (escaneandoCuaderno && jornadaActual != null) {
+                        HabitacionesScanFlow(
+                            jornadaId = jornadaActual.id,
+                            fecha = jornada.fecha.toString(),
+                            habitaciones = jornada.habitaciones,
+                            dao = dao,
+                            onClose = { escaneandoCuaderno = false }
+                        )
+                    } else {
+                        HabitacionesScreen(jornada.habitaciones, vm, onScan = { escaneandoCuaderno = true })
+                    }
+                }
                 2 -> ArticulosScreen(articulos, jornada.ventas, vm)
                 3 -> CierreScreen(jornada, vm)
             }
         }
+    }
+    if (confirmarSalida) {
+        AlertDialog(
+            onDismissRequest = { confirmarSalida = false },
+            title = { Text("Salir de la aplicación") },
+            text = { Text("¿Querés cerrar Gestión de Caja?") },
+            confirmButton = {
+                TextButton(onClick = onExit) { Text("Salir") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmarSalida = false }) { Text("Cancelar") }
+            }
+        )
     }
 }
 
