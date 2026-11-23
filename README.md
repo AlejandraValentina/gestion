@@ -1,31 +1,47 @@
-# Caja diaria (MVP 0)
+# Gestión de Caja — Android
 
-Aplicación Android nativa en Kotlin, Jetpack Compose/Material 3 y Room. Los datos se guardan en SQLite local sin necesidad de conexión.
+MVP nativo para registrar ingresos de habitaciones, ventas de artículos y cierres diarios, y conciliarlos por medio de pago. Los datos se guardan localmente en Room; la aplicación funciona sin conexión.
 
-## Requisitos
+## Requisitos y ejecución
 
-- Android Studio actualizado y Android SDK API 35 o superior.
-- JDK 17 (Gradle/AGP compatible).
+- Android Studio y Android SDK API 35.
+- JDK 17 o superior (el Gradle Wrapper fija Gradle 8.13).
+- Dispositivo o emulador Android 6.0/API 23 o superior.
 
-## Abrir y ejecutar
+Abrí este directorio en Android Studio o ejecutá en Windows:
 
-Abra esta carpeta como proyecto Gradle en Android Studio, espere la sincronización, conecte un dispositivo/emulador (Android 6.0/API 23+) y ejecute la configuración `app`. Para compilar: `gradle assembleDebug`; pruebas de dominio: `gradle testDebugUnitTest`.
+```powershell
+.\gradlew.bat testDebugUnitTest assembleDebug
+```
 
-## Funcionalidades
+El APK se genera en `app/build/outputs/apk/debug/app-debug.apk`. Para ejecutar las pruebas instrumentadas de Room con un emulador conectado:
 
-- Jornadas creadas y consultadas por fecha, sin duplicar fechas.
-- Altas, edición y eliminación de habitaciones; el importe exige pesos enteros no negativos y el pago se clasifica explícitamente.
-- Catálogo editable con precio vigente y ventas con nombre/precio copiados al momento de vender.
-- Cierre manual, separando valores no informados de cero.
-- Conciliación determinista para efectivo/tarjeta, pendiente sin clasificar y diferencias esperado menos informado.
+```powershell
+.\gradlew.bat connectedDebugAndroidTest
+```
 
-## Arquitectura
+## Flujos
 
-Interfaz Compose → ViewModel/StateFlow → DAO Room; `MotorCaja` y modelos puros en dominio, sin dependencias de UI ni de almacenamiento. Las fronteras para cámara, OCR y voz quedan para la iteración posterior: no hay permisos ni integraciones externas en esta versión.
+- Seleccionar una fecha con calendario; cada fecha identifica una jornada única.
+- Alta, edición y eliminación de habitaciones; medio de pago explícito.
+- Catálogo de productos separado de la lista de ventas. Cambiar un precio no altera los precios aplicados a ventas previas.
+- Cierres manuales de efectivo y tarjeta. Campo vacío significa “sin informar”; cero es un valor informado.
+- Resumen por origen, efectivo, tarjeta, pendientes, diferencias y estado de conciliación.
+- El cierre se compara con los ingresos; no se suma como ingreso.
 
-## Limitaciones conocidas
+## Estructura
 
-- El total vendido se determina por el medio elegido en cada venta; no se infieren reglas sobre tickets parciales, retiros ni ajustes.
-- El estado del cierre es visible por sus importes/diferencias, pero no existe una auditoría de cambios ni exportación/respaldo.
-- La fecha se ingresa como AAAA-MM-DD.
-- Se necesita validar la interfaz en un dispositivo real o emulador antes de distribuir.
+- `ui/CajaViewModel.kt`: selección de jornada y observación con `flatMapLatest`; al cambiar la fecha cancela la observación anterior y emite estado de carga antes de la nueva jornada.
+- `CajaApp.kt`, `ResumenDiario.kt`, `HabitacionesScreen.kt`, `ArticulosScreen.kt`, `CierreScreen.kt`: navegación, componentes y pantallas Compose.
+- `domain/MotorCaja.kt`: aritmética pura con `Long`, operaciones exactas y estados de pago explícitos.
+- `data/Database.kt`: Room, DAO y repositorios locales. No se cambió el esquema ni se requiere migración.
+- `src/test`: pruebas unitarias del motor contable.
+- `src/androidTest`: pruebas Room para jornadas distintas, edición/eliminación y persistencia tras cerrar/reabrir la base.
+
+## Estado de validación de esta revisión
+
+- `testDebugUnitTest`: ejecutado correctamente.
+- `assembleDebug`: compilación correcta; produce el APK indicado arriba.
+- `assembleDebugAndroidTest`: compilación correcta de las pruebas instrumentadas.
+- `connectedDebugAndroidTest`: no se pudo ejecutar. El AVD Pixel 8 disponible no arranca porque el volumen del sistema `C:` no tiene espacio suficiente. No se borraron datos para liberar espacio.
+- No se implementan cámara, OCR, reconocimiento de voz ni servicios externos. Los cálculos permanecen independientes de futuras propuestas de lectura.
