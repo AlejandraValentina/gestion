@@ -79,7 +79,6 @@ fun ResumenDiario(habitaciones: List<Habitacion>, ventas: List<VentaDb>, cierre:
                 FilaResumen("Total de habitaciones + artículos", money(total))
                 FilaResumen("Efectivo + tarjeta informado", resultado.totalInformado?.let(::money) ?: "Pendiente (cierre incompleto)")
                 FilaResumen("Diferencia total", resultado.diferenciaTotal?.let(::money) ?: "Pendiente", destacar = true, alerta = resultado.diferenciaTotal != null && resultado.diferenciaTotal != 0L)
-                Text("Diferencia = esperado − informado", style = MaterialTheme.typography.bodySmall)
                 TextButton(onClick = { irA(3) }) { Text(if (cierreIncompleto) "Completar cierre" else "Ver cierre") }
             }
         }
