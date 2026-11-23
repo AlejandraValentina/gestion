@@ -56,6 +56,8 @@ El APK se genera en `app/build/outputs/apk/debug/app-debug.apk`. Para ejecutar l
 - El medio de pago ausente queda `SIN_CLASIFICAR`; nunca se asigna efectivo automáticamente.
 ## Escaneo de ventas
 
+Los ingresos de habitaciones ya no solicitan ni interpretan el nombre de una persona. Se conserva la columna antigua de Room para compatibilidad con datos previos; las nuevas altas manuales y escaneadas la dejan vacía.
+
 En **Artículos → Ventas → Escanear hoja de ventas**, la app reutiliza la cámara, el editor de recorte y el reconocedor ML Kit que ya usa el flujo de habitaciones. La revisión interpreta cantidades antes o después del nombre, combina nombre y cantidad cuando OCR los entrega como bloques separados y conserva las filas repetidas por separado.
 
 La asociación normaliza mayúsculas y acentos, acepta una coincidencia exacta única y usa distancia de edición para sugerir variantes de OCR. Las coincidencias aproximadas solo se seleccionan automáticamente cuando superan el umbral de similitud y se separan claramente de la segunda opción; los casos dudosos requieren selección manual. El precio viene del catálogo y se copia a la venta; un cambio de precio durante la revisión solo afecta esa venta. Los pagos empiezan como **Sin clasificar** y se pueden aplicar a todo el lote o editar por fila.

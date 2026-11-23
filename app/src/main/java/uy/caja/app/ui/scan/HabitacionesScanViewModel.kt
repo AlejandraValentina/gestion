@@ -30,7 +30,6 @@ internal enum class ScanStep { CAMERA, PHOTO, REVIEW, COMPLETE }
 internal data class RoomDraft(
     val id: String = UUID.randomUUID().toString(),
     val roomNumber: String = "",
-    val person: String = "",
     val amountText: String = "",
     val payment: String = "SIN_CLASIFICAR",
     val sourceText: String = "",
@@ -171,7 +170,7 @@ internal class HabitacionesScanViewModel(
             Habitacion(
                 jornadaId = current.jornadaId,
                 numero = draft.roomNumber.trim(),
-                persona = draft.person.trim(),
+                persona = "",
                 importe = draft.amount ?: 0L,
                 pago = draft.payment,
                 scanBatchId = current.batchId
@@ -212,7 +211,6 @@ internal class HabitacionesScanViewModel(
 
 private fun RoomProposal.toDraft() = RoomDraft(
     roomNumber = roomNumber.orEmpty(),
-    person = person.orEmpty(),
     amountText = amount?.toString().orEmpty(),
     payment = payment,
     sourceText = sourceText,

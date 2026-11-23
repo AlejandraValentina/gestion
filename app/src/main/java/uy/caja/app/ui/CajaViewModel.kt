@@ -53,13 +53,13 @@ class CajaViewModel(private val dao: CajaDao) : ViewModel() {
 
     fun seleccionarFecha(fecha: LocalDate) { fechaSeleccionada.value = fecha }
 
-    fun guardarHabitacion(id: Long?, numero: String, persona: String, monto: Long, pago: String) {
+    fun guardarHabitacion(id: Long?, numero: String, monto: Long, pago: String) {
         val actual = jornada.value.jornada ?: return
         viewModelScope.launch {
             if (id == null) dao.insertarHabitacion(
-                Habitacion(jornadaId = actual.id, numero = numero.trim(), persona = persona.trim(), importe = monto, pago = pago)
+                Habitacion(jornadaId = actual.id, numero = numero.trim(), persona = "", importe = monto, pago = pago)
             ) else jornada.value.habitaciones.firstOrNull { it.id == id }?.let { existente ->
-                dao.actualizarHabitacion(existente.copy(numero = numero.trim(), persona = persona.trim(), importe = monto, pago = pago))
+                dao.actualizarHabitacion(existente.copy(numero = numero.trim(), importe = monto, pago = pago))
             }
         }
     }

@@ -20,11 +20,9 @@ class RoomRecordParserTest {
 
         assertEquals(4, result.size)
         assertEquals("101", result[0].roomNumber)
-        assertEquals("Juan", result[0].person)
         assertEquals(500L, result[0].amount)
         assertEquals("SIN_CLASIFICAR", result[0].payment)
         assertEquals("102", result[1].roomNumber)
-        assertEquals("María", result[1].person)
         assertEquals(800L, result[1].amount)
         assertEquals("TARJETA", result[1].payment)
         assertEquals(1200L, result[2].amount)

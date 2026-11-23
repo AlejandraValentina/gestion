@@ -50,7 +50,6 @@ fun HabitacionesScreen(habitaciones: List<Habitacion>, vm: CajaViewModel, onScan
                     Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text("Habitación ${item.numero}", style = MaterialTheme.typography.titleMedium)
-                            if (item.persona.isNotBlank()) Text(item.persona, style = MaterialTheme.typography.bodyMedium)
                             Text(item.pago.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text(money(item.importe), style = MaterialTheme.typography.titleMedium)
@@ -62,8 +61,8 @@ fun HabitacionesScreen(habitaciones: List<Habitacion>, vm: CajaViewModel, onScan
         }
     }
     if (nueva || editar != null) {
-        HabitacionEditor(editar, onDismiss = { nueva = false; editar = null }) { numero, persona, importe, pago ->
-            vm.guardarHabitacion(editar?.id, numero, persona, importe, pago)
+        HabitacionEditor(editar, onDismiss = { nueva = false; editar = null }) { numero, importe, pago ->
+            vm.guardarHabitacion(editar?.id, numero, importe, pago)
             nueva = false; editar = null
         }
     }
@@ -80,9 +79,8 @@ fun HabitacionesScreen(habitaciones: List<Habitacion>, vm: CajaViewModel, onScan
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HabitacionEditor(item: Habitacion?, onDismiss: () -> Unit, onSave: (String, String, Long, String) -> Unit) {
+private fun HabitacionEditor(item: Habitacion?, onDismiss: () -> Unit, onSave: (String, Long, String) -> Unit) {
     var numero by remember(item?.id) { mutableStateOf(item?.numero.orEmpty()) }
-    var persona by remember(item?.id) { mutableStateOf(item?.persona.orEmpty()) }
     var importe by remember(item?.id) { mutableStateOf(item?.importe?.toString().orEmpty()) }
     var pago by remember(item?.id) { mutableStateOf(item?.pago ?: "SIN_CLASIFICAR") }
     var pagoMenu by remember { mutableStateOf(false) }
@@ -101,7 +99,6 @@ private fun HabitacionEditor(item: Habitacion?, onDismiss: () -> Unit, onSave: (
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(numero, { numero = it }, label = { Text("Habitación") }, singleLine = true, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next), modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(persona, { persona = it }, label = { Text("Persona · opcional") }, singleLine = true, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next), modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(
                     importe, { importe = it.filter(Char::isDigit) }, label = { Text("Importe en pesos") },
                     singleLine = true,
@@ -124,7 +121,7 @@ private fun HabitacionEditor(item: Habitacion?, onDismiss: () -> Unit, onSave: (
                 if (error != null) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
         },
-        confirmButton = { TextButton(enabled = error == null, onClick = { keyboard?.hide(); onSave(numero, persona, amount!!, pago) }) { Text("Guardar") } },
+        confirmButton = { TextButton(enabled = error == null, onClick = { keyboard?.hide(); onSave(numero, amount!!, pago) }) { Text("Guardar") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
     )
 }

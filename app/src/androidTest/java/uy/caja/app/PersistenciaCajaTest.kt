@@ -86,8 +86,8 @@ class PersistenciaCajaTest {
         val jornada = dao.jornadaFecha("2026-11-23")!!
         val lote = "scan-test-${System.nanoTime()}"
         val filas = listOf(
-            Habitacion(jornadaId = jornada.id, numero = "101", persona = "Ana", importe = 500, pago = "SIN_CLASIFICAR"),
-            Habitacion(jornadaId = jornada.id, numero = "101", persona = "Luis", importe = 800, pago = "TARJETA")
+            Habitacion(jornadaId = jornada.id, numero = "101", persona = "", importe = 500, pago = "SIN_CLASIFICAR"),
+            Habitacion(jornadaId = jornada.id, numero = "101", persona = "", importe = 800, pago = "TARJETA")
         )
 
         assertTrue(dao.importarHabitaciones(lote, filas))
@@ -97,6 +97,7 @@ class PersistenciaCajaTest {
         assertEquals(2, guardadas.size)
         assertEquals(setOf(500L, 800L), guardadas.map { it.importe }.toSet())
         assertTrue(guardadas.all { it.scanBatchId == lote })
+        assertTrue(guardadas.all { it.persona.isEmpty() })
     }
 
     @Test fun importacionDeVentasEsAtomicaIdempotenteConservaPreciosYAlimentaConciliacion() = runBlocking {

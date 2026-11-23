@@ -25,7 +25,6 @@ data class RecognizedLine(
 data class RoomProposal(
     val id: String = UUID.randomUUID().toString(),
     val roomNumber: String?,
-    val person: String?,
     val amount: Long?,
     val payment: String,
     val sourceText: String,
@@ -85,7 +84,6 @@ object RoomRecordParser {
             if (line.confidence != null && line.confidence < 0.5f) {
                 issues += "La confianza del reconocimiento es baja; compará con la foto."
             }
-            val person = extractPerson(text, roomToken, amountToken)
             val sourceRegion = NormalizedRegion(
                 left = (crop.left + line.bounds.left * crop.width).coerceIn(0f, 1f),
                 top = (crop.top + line.bounds.top * crop.height).coerceIn(0f, 1f),
@@ -94,7 +92,6 @@ object RoomRecordParser {
             )
             RoomProposal(
                 roomNumber = room,
-                person = person,
                 amount = amount,
                 payment = payment,
                 sourceText = text,
@@ -102,23 +99,6 @@ object RoomRecordParser {
                 issues = issues.distinct()
             )
         }
-
-    private fun extractPerson(
-        source: String,
-        room: MatchResult?,
-        amount: MatchGroup?
-    ): String? {
-        val ranges = listOfNotNull(room?.range, amount?.range).sortedByDescending { it.first }
-        var result = source
-        ranges.forEach { result = result.removeRange(it.first, it.last + 1) }
-        result = result
-            .replace(Regex("(?i)\\b(?:tarjeta|efectivo|UYU)\\b"), " ")
-            .replace("$", " ")
-            .replace(Regex("[^\\p{L}\\p{M} .'-]"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim(' ', '.', '-', '\'', '"')
-        return result.takeIf(String::isNotBlank)
-    }
 
     private fun String.toLongDigits(): Long? = filter(Char::isDigit).takeIf(String::isNotEmpty)?.toLongOrNull()
 }

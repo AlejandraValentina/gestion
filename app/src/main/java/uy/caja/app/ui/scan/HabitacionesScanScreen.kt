@@ -524,11 +524,6 @@ private fun RoomDraftCard(
                     modifier = Modifier.weight(1f), isError = draft.included && draft.amount == null
                 )
             }
-            OutlinedTextField(
-                value = draft.person,
-                onValueChange = { value -> onUpdate(draft.id) { it.copy(person = value, issues = emptyList()) } },
-                label = { Text("Persona · opcional") }, singleLine = true, modifier = Modifier.fillMaxWidth()
-            )
             ExposedDropdownMenuBox(expanded = paymentMenu, onExpandedChange = { paymentMenu = it }) {
                 OutlinedTextField(
                     value = payLabel(draft.payment), onValueChange = {}, readOnly = true,
