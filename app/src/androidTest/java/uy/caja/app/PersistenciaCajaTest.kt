@@ -16,6 +16,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import uy.caja.app.data.*
+import uy.caja.app.domain.*
 
 @RunWith(AndroidJUnit4::class)
 class PersistenciaCajaTest {
@@ -98,6 +99,33 @@ class PersistenciaCajaTest {
         assertTrue(guardadas.all { it.scanBatchId == lote })
     }
 
+    @Test fun importacionDeVentasEsAtomicaIdempotenteConservaPreciosYAlimentaConciliacion() = runBlocking {
+        dao.crearJornada(Jornada(fecha = "2026-11-24"))
+        val jornada = dao.jornadaFecha("2026-11-24")!!
+        val productId = dao.insertarArticulo(Articulo(nombre = "Agua", precio = 80))
+        val batch = "sales-scan-${System.nanoTime()}"
+        val rows = listOf(
+            VentaDb(jornadaId = jornada.id, articuloId = productId, articuloNombre = "Agua", cantidad = 3, precioAplicado = 80, pago = "EFECTIVO"),
+            VentaDb(jornadaId = jornada.id, articuloId = productId, articuloNombre = "Agua", cantidad = 2, precioAplicado = 80, pago = "SIN_CLASIFICAR")
+        )
+        assertTrue(dao.importarVentasEscaneadas(batch, rows))
+        assertFalse(dao.importarVentasEscaneadas(batch, rows))
+        dao.actualizarArticulo(dao.articulos().first().single().copy(precio = 100))
+        val saved = dao.ventas(jornada.id).first()
+        assertEquals(2, saved.size)
+        assertTrue(saved.all { it.scanBatchId == batch && it.precioAplicado == 80L })
+
+        val reconciliation = MotorCaja.calcular(
+            habitaciones = emptyList(),
+            ventas = saved.map { Venta(it.cantidad, it.precioAplicado, Pago.valueOf(it.pago)) },
+            efectivoCierre = null,
+            tarjetaCierre = null
+        )
+        assertEquals(240L, reconciliation.efectivo)
+        assertEquals(160L, reconciliation.pendiente)
+        assertEquals(400L, reconciliation.efectivo + reconciliation.tarjeta + reconciliation.pendiente)
+    }
+
     @Test fun migrationV1V2ConservaMovimientosYaGuardados() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val legacyName = "caja-v1-${System.nanoTime()}.db"
@@ -113,17 +141,22 @@ class PersistenciaCajaTest {
         legacy.execSQL("CREATE TABLE cierres (jornadaId INTEGER NOT NULL PRIMARY KEY, efectivo INTEGER, tarjeta INTEGER)")
         legacy.execSQL("INSERT INTO jornadas (id, fecha) VALUES (1, '2026-11-23')")
         legacy.execSQL("INSERT INTO habitaciones (id, jornadaId, numero, persona, importe, pago) VALUES (1, 1, '101', 'Ana', 1200, 'SIN_CLASIFICAR')")
+        legacy.execSQL("INSERT INTO articulos (id, nombre, precio, activo) VALUES (1, 'Agua', 55, 1)")
+        legacy.execSQL("INSERT INTO ventas (id, jornadaId, articuloId, articuloNombre, cantidad, precioAplicado, pago) VALUES (1, 1, 1, 'Agua', 2, 55, 'TARJETA')")
         legacy.version = 1
         legacy.close()
 
         db = Room.databaseBuilder(context, CajaDb::class.java, legacyName)
-            .addMigrations(CajaDb.MIGRATION_1_2)
+            .addMigrations(CajaDb.MIGRATION_1_2, CajaDb.MIGRATION_2_3)
             .build()
         dao = db.dao()
         val migrated = dao.habitaciones(1).first().single()
         assertEquals("101", migrated.numero)
         assertEquals(1200L, migrated.importe)
         assertEquals(null, migrated.scanBatchId)
+        val migratedSale = dao.ventas(1).first().single()
+        assertEquals(55L, migratedSale.precioAplicado)
+        assertEquals(null, migratedSale.scanBatchId)
     }
 }
 

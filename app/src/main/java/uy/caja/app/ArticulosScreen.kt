@@ -24,7 +24,7 @@ import uy.caja.app.ui.CajaViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ArticulosScreen(articulos: List<Articulo>, ventas: List<VentaDb>, vm: CajaViewModel) {
+fun ArticulosScreen(articulos: List<Articulo>, ventas: List<VentaDb>, vm: CajaViewModel, onScanSales: () -> Unit) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var editing by remember { mutableStateOf<Articulo?>(null) }
     var creating by remember { mutableStateOf(false) }
@@ -33,6 +33,9 @@ fun ArticulosScreen(articulos: List<Articulo>, ventas: List<VentaDb>, vm: CajaVi
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Artículos", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
             if (selectedTab == 0) Button(onClick = { editing = null; creating = true }) { Text("Nuevo") }
+        }
+        if (selectedTab == 1) {
+            OutlinedButton(onClick = onScanSales, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) { Text("Escanear hoja de ventas") }
         }
         PrimaryTabRow(selectedTabIndex = selectedTab) {
             Tab(selectedTab == 0, { selectedTab = 0 }, text = { Text("Catálogo (${articulos.size})") })

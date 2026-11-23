@@ -21,6 +21,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import uy.caja.app.ui.CajaViewModel
 import uy.caja.app.data.CajaDao
 import uy.caja.app.ui.scan.HabitacionesScanFlow
+import uy.caja.app.ui.scan.VentasScanFlow
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -35,6 +36,7 @@ fun CajaApp(vm: CajaViewModel, dao: CajaDao, onExit: () -> Unit) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var confirmarSalida by rememberSaveable { mutableStateOf(false) }
     var escaneandoCuaderno by rememberSaveable { mutableStateOf(false) }
+    var escaneandoVentas by rememberSaveable { mutableStateOf(false) }
     val destinos = remember {
         listOf(
             Destino("Resumen", Icons.Outlined.Home, 0),
@@ -43,8 +45,8 @@ fun CajaApp(vm: CajaViewModel, dao: CajaDao, onExit: () -> Unit) {
             Destino("Cierre", Icons.Outlined.ReceiptLong, 3)
         )
     }
-    BackHandler(enabled = tab != 0 || escaneandoCuaderno) {
-        if (escaneandoCuaderno) escaneandoCuaderno = false else tab = 0
+    BackHandler(enabled = tab != 0 || escaneandoCuaderno || escaneandoVentas) {
+        if (escaneandoCuaderno) escaneandoCuaderno = false else if (escaneandoVentas) escaneandoVentas = false else tab = 0
     }
     Scaffold(
         topBar = {
@@ -98,7 +100,18 @@ fun CajaApp(vm: CajaViewModel, dao: CajaDao, onExit: () -> Unit) {
                         HabitacionesScreen(jornada.habitaciones, vm, onScan = { escaneandoCuaderno = true })
                     }
                 }
-                2 -> ArticulosScreen(articulos, jornada.ventas, vm)
+                2 -> {
+                    val jornadaActual = jornada.jornada
+                    if (escaneandoVentas && jornadaActual != null) {
+                        VentasScanFlow(
+                            jornadaId = jornadaActual.id,
+                            fecha = jornada.fecha.toString(),
+                            catalog = articulos,
+                            dao = dao,
+                            onClose = { escaneandoVentas = false }
+                        )
+                    } else ArticulosScreen(articulos, jornada.ventas, vm, onScanSales = { escaneandoVentas = true })
+                }
                 3 -> CierreScreen(jornada, vm)
             }
         }

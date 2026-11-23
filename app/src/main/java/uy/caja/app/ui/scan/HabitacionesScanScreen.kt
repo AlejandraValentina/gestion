@@ -105,13 +105,19 @@ internal fun HabitacionesScanFlow(
         }
         when (state.step) {
             ScanStep.CAMERA -> CameraCaptureScreen(
+                title = "Escanear cuaderno",
                 canCapture = sameJornada,
                 onPrepareCapture = scanVm::prepareCaptureFile,
                 onCaptureResult = scanVm::captureCompleted,
                 onCancel = { scanVm.cancel(); onClose() }
             )
             ScanStep.PHOTO -> PhotoRegionScreen(
-                state = state,
+                photoPath = state.photoPath,
+                crop = state.crop,
+                processing = state.processing,
+                error = state.error,
+                title = "Seleccioná la zona",
+                instructions = "Arrastrá dentro del marco para moverlo; arrastrá una esquina para ajustar los límites. Se procesará solo el recorte.",
                 onCropChanged = scanVm::updateCrop,
                 onRetake = scanVm::retake,
                 onCancel = { scanVm.cancel(); onClose() },
@@ -137,7 +143,8 @@ internal fun HabitacionesScanFlow(
 }
 
 @Composable
-private fun CameraCaptureScreen(
+internal fun CameraCaptureScreen(
+    title: String,
     canCapture: Boolean,
     onPrepareCapture: () -> File,
     onCaptureResult: (File, Boolean, String?) -> Unit,
@@ -161,7 +168,7 @@ private fun CameraCaptureScreen(
     var provider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasPermission = granted
-        cameraError = if (granted) null else "Se necesita permiso de cámara para fotografiar el cuaderno."
+        cameraError = if (granted) null else "Se necesita permiso de cámara para fotografiar la hoja."
     }
 
     LaunchedEffect(hasPermission, lifecycleOwner, previewView, imageCapture) {
@@ -198,7 +205,7 @@ private fun CameraCaptureScreen(
     }
 
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Escanear cuaderno", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         Text("Enfocá la página y evitá sombras. Después vas a elegir qué zona leer.", style = MaterialTheme.typography.bodyMedium)
         if (hasPermission) {
             AndroidView(
@@ -247,34 +254,38 @@ private fun CameraCaptureScreen(
 }
 
 @Composable
-private fun PhotoRegionScreen(
-    state: ScanUiState,
+internal fun PhotoRegionScreen(
+    photoPath: String?,
+    crop: NormalizedRegion,
+    processing: Boolean,
+    error: String?,
+    title: String,
+    instructions: String,
     onCropChanged: (NormalizedRegion) -> Unit,
     onRetake: () -> Unit,
     onCancel: () -> Unit,
     onProcess: () -> Unit
 ) {
-    val path = state.photoPath
-    val bitmapState = produceState<Result<Bitmap>?>(initialValue = null, key1 = path) {
-        value = if (path == null) null else runCatching { withContext(Dispatchers.IO) { loadOrientedBitmap(path) } }
+    val bitmapState = produceState<Result<Bitmap>?>(initialValue = null, key1 = photoPath) {
+        value = if (photoPath == null) null else runCatching { withContext(Dispatchers.IO) { loadOrientedBitmap(photoPath) } }
     }
     val bitmap = bitmapState.value?.getOrNull()
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Seleccioná la zona", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-        Text("Arrastrá dentro del marco para moverlo; arrastrá una esquina para ajustar los límites. Se procesará solo el recorte.", style = MaterialTheme.typography.bodySmall)
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text(instructions, style = MaterialTheme.typography.bodySmall)
         if (bitmap != null) {
-            CropImageSelector(bitmap, state.crop, onCropChanged, Modifier.weight(1f).fillMaxWidth())
+            CropImageSelector(bitmap, crop, onCropChanged, Modifier.weight(1f).fillMaxWidth())
         } else if (bitmapState.value?.isFailure == true) {
             Text("No se pudo abrir la foto. Repetí la captura.", color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
         } else {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         }
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancelar") }
             OutlinedButton(onClick = onRetake, modifier = Modifier.weight(1f)) { Text("Repetir foto") }
-            Button(enabled = bitmap != null && !state.processing, onClick = onProcess, modifier = Modifier.weight(1f)) {
-                if (state.processing) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            Button(enabled = bitmap != null && !processing, onClick = onProcess, modifier = Modifier.weight(1f)) {
+                if (processing) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                 else Text("Reconocer")
             }
         }
