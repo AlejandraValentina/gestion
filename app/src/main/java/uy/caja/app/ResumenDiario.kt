@@ -24,7 +24,7 @@ fun ResumenDiario(habitaciones: List<Habitacion>, ventas: List<VentaDb>, cierre:
         cierre?.efectivo,
         cierre?.tarjeta
     )
-    val total = Math.addExact(Math.addExact(resultado.efectivo, resultado.tarjeta), resultado.pendiente)
+    val total = resultado.totalEsperado
     val habitacionesTotal = habitaciones.fold(0L) { acc, h -> Math.addExact(acc, h.importe) }
     val articulosTotal = ventas.fold(0L) { acc, v -> Math.addExact(acc, Math.multiplyExact(v.cantidad.toLong(), v.precioAplicado)) }
     val cierreIncompleto = resultado.efectivoInformado == null || resultado.tarjetaInformado == null
@@ -76,6 +76,9 @@ fun ResumenDiario(habitaciones: List<Habitacion>, ventas: List<VentaDb>, cierre:
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
+                FilaResumen("Total de habitaciones + artículos", money(total))
+                FilaResumen("Efectivo + tarjeta informado", resultado.totalInformado?.let(::money) ?: "Pendiente (cierre incompleto)")
+                FilaResumen("Diferencia total", resultado.diferenciaTotal?.let(::money) ?: "Pendiente", destacar = true, alerta = resultado.diferenciaTotal != null && resultado.diferenciaTotal != 0L)
                 Text("Diferencia = esperado − informado", style = MaterialTheme.typography.bodySmall)
                 TextButton(onClick = { irA(3) }) { Text(if (cierreIncompleto) "Completar cierre" else "Ver cierre") }
             }
