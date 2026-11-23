@@ -127,4 +127,3 @@ fun pagoLabel(value: String): String = when (value) {
     else -> "Sin clasificar"
 }
 
-

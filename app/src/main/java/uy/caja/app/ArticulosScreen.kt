@@ -186,5 +186,3 @@ private fun ArticuloEditor(item: Articulo?, onDismiss: () -> Unit, onSave: (Stri
     )
 }
 
-
-
