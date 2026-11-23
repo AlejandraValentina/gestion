@@ -209,8 +209,8 @@ fun CajaApp(vm: CajaVm) {
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(Modifier.height(16.dp))
-                    var ev by remember(c?.jornadaId) { mutableStateOf(c?.efectivo?.toString().orEmpty()) }
-                    var ta by remember(c?.jornadaId) { mutableStateOf(c?.tarjeta?.toString().orEmpty()) }
+                    var ev by remember(fecha, c?.jornadaId, c?.efectivo, c?.tarjeta) { mutableStateOf(c?.efectivo?.toString().orEmpty()) }
+                    var ta by remember(fecha, c?.jornadaId, c?.efectivo, c?.tarjeta) { mutableStateOf(c?.tarjeta?.toString().orEmpty()) }
                     OutlinedTextField(
                         ev, { ev = it }, label = { Text("Efectivo informado ($)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
