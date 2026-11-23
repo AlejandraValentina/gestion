@@ -6,6 +6,9 @@ data class Venta(val cantidad: Int, val precio: Long, val pago: Pago)
 data class Conciliacion(val efectivo: Long, val tarjeta: Long, val pendiente: Long, val efectivoInformado: Long?, val tarjetaInformado: Long?) {
     val diferenciaEfectivo get() = efectivoInformado?.let { efectivo - it }
     val diferenciaTarjeta get() = tarjetaInformado?.let { tarjeta - it }
+    val totalEsperado get() = Math.addExact(Math.addExact(efectivo, tarjeta), pendiente)
+    val totalInformado get() = if (efectivoInformado != null && tarjetaInformado != null) Math.addExact(efectivoInformado, tarjetaInformado) else null
+    val diferenciaTotal get() = totalInformado?.let { totalEsperado - it }
 }
 object MotorCaja {
     fun calcular(habitaciones: List<Linea>, ventas: List<Venta>, efectivoCierre: Long?, tarjetaCierre: Long?): Conciliacion {

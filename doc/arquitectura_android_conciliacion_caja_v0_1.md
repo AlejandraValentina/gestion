@@ -37,11 +37,11 @@
 | Concurrencia | Kotlin Coroutines + Flow | Trabajo asíncrono y observación de datos |
 | Cámara | CameraX | Fotografías y vista previa |
 | Voz (segunda iteración) | `SpeechRecognizer` de Android | Entrada dictada; comprobar disponibilidad y soporte local |
-| OCR (segunda iteración) | Adaptador `HandwritingRecognizer` | Probar modelos con imágenes reales antes de elegir |
+| OCR para fotos | Adaptador `HandwritingRecognizer` + ML Kit Text Recognition v2, modelo latino empaquetado | Ejecución local sin descarga al escanear; medir con cuadernos reales antes de confiar en los resultados |
 | Dependencias | Inyección sencilla por constructor al inicio | Evitar Hilt/estructuras complejas hasta que aporten valor |
 | Pruebas | JUnit + Room instrumentado | Aritmética, integridad y persistencia |
 
-**Importante:** ML Kit Digital Ink reconoce trazos hechos en pantallas, no fotografías de papel. Para fotos, evaluar ML Kit Text Recognition v2 y un reconocedor de manuscritos basado en imagen (por ejemplo, un servicio remoto), mediante la misma interfaz. No comprometer precisión antes de medirla.
+**Importante:** ML Kit Digital Ink reconoce trazos hechos en pantallas, no fotografías de papel. La primera integración usa ML Kit Text Recognition v2 para fotos con modelo latino empaquetado. Es OCR general, no un reconocedor especializado de manuscrito; no se compromete precisión sin medirla con páginas reales. El adaptador permite reemplazarlo o complementarlo más adelante. No se envían imágenes a servicios remotos.
 
 ## 3. Arquitectura lógica
 
@@ -112,13 +112,16 @@ diferencia_tarjeta  = esperado_tarjeta  - cierre.tarjetaInformado
 6. Mostrar importes esperados, pendientes de clasificación y diferencias.
 7. Guardar todo en Room, editar y recuperar tras cerrar y abrir la aplicación.
 
-### MVP 1 — Captura visual
+### MVP 1 — Captura visual (primera integración implementada)
 
-1. Fotografiar página de habitaciones u hoja de artículos con CameraX.
-2. Delimitar desde/hasta o recortar una región de lectura.
-3. Guardar documento original, fecha y zona elegida.
-4. Incorporar un lector OCR detrás de `HandwritingRecognizer`.
-5. Presentar los valores propuestos para corrección y confirmación antes de guardarlos.
+1. Fotografiar la página de habitaciones con CameraX; el permiso se solicita al abrir el flujo.
+2. Seleccionar y ajustar una región rectangular. El recorte se calcula sobre la imagen orientada y solo esa región se entrega al OCR.
+3. Extraer líneas y coordenadas con ML Kit Text Recognition v2.
+4. Interpretar cada línea como propuesta. El parser detecta números, importe, persona y las palabras explícitas `tarjeta` o `efectivo`; la ausencia de marca queda `SIN_CLASIFICAR`.
+5. Editar, excluir o agregar filas, consultar la foto y confirmar antes de guardar.
+6. Guardar el lote en una transacción Room. Un identificador persistido impide que una misma confirmación se inserte dos veces; la migración 1→2 conserva movimientos previos.
+
+La captura original vive en el directorio privado de la app mientras se revisa y se borra al cancelar o terminar. La referencia persistente a `Documento` queda para una iteración posterior.
 
 ### MVP 2 — Voz y marcas de pago
 
@@ -155,7 +158,7 @@ app/src/main/java/<paquete>/
 
 **No crear** microservicios, sincronización multiusuario, autenticación remota, administración web ni subproyectos Gradle por funcionalidad en el MVP inicial.
 
-## 8. Contratos de integración (diseño; no implementar aún)
+## 8. Contratos de integración
 
 ```kotlin
 interface HandwritingRecognizer {
@@ -171,7 +174,7 @@ interface ReconciliationEngine {
 }
 ```
 
-La salida `RecognitionProposal` debe conservar texto y región fuente de cada candidato; el motor contable no recibe directamente predicciones sin confirmar.
+La integración actual conserva el texto y la región fuente de cada propuesta. El motor contable no recibe predicciones directamente: únicamente se guardan las filas incluidas y confirmadas por la persona usuaria.
 
 Si se utiliza IA en la nube, llamar al proveedor desde un backend/proxy seguro, nunca incluir claves privadas en el APK. Ninguna foto debe enviarse sin decisión explícita y reglas de privacidad apropiadas.
 
@@ -179,7 +182,7 @@ Si se utiliza IA en la nube, llamar al proveedor desde un backend/proxy seguro, 
 
 1. **Jornadas:** listado por fecha, crear/abrir.
 2. **Jornada:** resumen de habitaciones, artículos y cierre.
-3. **Habitaciones:** agregar/editar/eliminar registros.
+3. **Habitaciones:** agregar/editar/eliminar registros y abrir «Escanear cuaderno».
 4. **Artículos:** precios y ventas de la jornada.
 5. **Cierre:** importes informados de efectivo y tarjeta.
 6. **Conciliación:** esperado, informado, diferencia y pendientes.
@@ -216,3 +219,32 @@ Estas incertidumbres deben conservarse como reglas configurables o campos opcion
 - SpeechRecognizer: https://developer.android.com/reference/android/speech/SpeechRecognizer
 - ML Kit Text Recognition v2: https://developers.google.com/ml-kit/vision/text-recognition/v2/android
 - ML Kit Digital Ink (solo trazos digitales): https://developers.google.com/ml-kit/vision/digital-ink-recognition/android
+
+### Validación de la primera integración
+
+- Parser: cubre asociación habitación/importe, montos con `$`, clasificación solo ante palabras explícitas, datos incompletos y mapeo de regiones.
+- Room: prueba importación por lote, doble confirmación, habitaciones repetidas y migración no destructiva desde el esquema v1.
+- Emulador Pixel 8/API 35: se verificaron permiso de cámara, preview, captura, ajuste de región, procesamiento local y cancelación sin inserciones.
+- No se proporcionaron fotos del cuaderno. La escena virtual del emulador no representa escritura manuscrita, por lo que la precisión de ML Kit en los registros reales todavía no está validada.
+
+### Evaluación de motores OCR para Android
+
+| Alternativa | Ejecución local | Integración | Decisión para esta versión |
+|---|---|---|---|
+| ML Kit Text Recognition v2, modelo latino empaquetado | Sí; el modelo va dentro del APK y está disponible desde la primera ejecución | API Android directa; devuelve bloques, líneas y posiciones | Seleccionado para entregar captura y revisión con pocas piezas móviles. No se atribuye precisión de manuscrito sin muestras reales. |
+| PaddleOCR móvil (PP-OCR) con ONNX Runtime | Sí; modelos de detección y reconocimiento incluidos como assets | Requiere integrar runtime y modelos; la guía Android oficial también enumera OpenCV y un `minSdk` superior al de la app | Alternativa para medir si el reconocimiento de los cuadernos reales resulta insuficiente; agrega tamaño y mantenimiento y no se incorpora hasta comparar resultados. |
+
+La documentación oficial de ML Kit describe la instalación empaquetada como disponible inmediatamente y la salida estructurada con cajas por bloque/línea. La guía oficial de PaddleOCR muestra despliegue Android móvil con ONNX Runtime y modelos PP-OCR. Ninguna de estas referencias sustituye una evaluación con fotos reales del cuaderno.
+
+### Componentes agregados
+
+```text
+ui/scan/
+  HabitacionesScanScreen.kt       # permiso, preview CameraX, captura, región y revisión
+  HabitacionesScanViewModel.kt    # estado de la sesión, OCR en IO y confirmación del lote
+data/recognition/
+  HandwritingRecognizer.kt        # puerto de reconocimiento independiente de la UI
+  MlKitHandwritingRecognizer.kt   # adaptador local para ML Kit Text Recognition
+domain/scan/
+  RoomRecordParser.kt             # interpretación conservadora de líneas y montos
+```
