@@ -3,7 +3,18 @@ package uy.caja.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import android.app.DatePickerDialog
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Bed
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.outlined.ShoppingCart
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalContext
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+import kotlinx.coroutines.coroutineScope
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -27,7 +38,25 @@ class CajaVm(private val dao:CajaDao):ViewModel(){
  val articulos=dao.articulos().stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),emptyList())
  val fecha=MutableStateFlow(LocalDate.now().toString()); val jornada=MutableStateFlow<Jornada?>(null)
  val habitaciones=MutableStateFlow<List<Habitacion>>(emptyList()); val ventas=MutableStateFlow<List<VentaDb>>(emptyList()); val cierre=MutableStateFlow<Cierre?>(null)
- init { viewModelScope.launch { fecha.collect { f-> dao.crearJornada(Jornada(fecha=f)); jornada.value=dao.jornadaFecha(f); jornada.value?.let { j-> launch { dao.habitaciones(j.id).collect{habitaciones.value=it} }; launch { dao.ventas(j.id).collect{ventas.value=it} }; launch { dao.cierre(j.id).collect{cierre.value=it} } } } } }
+ init {
+  viewModelScope.launch {
+   fecha.collectLatest { selectedDate ->
+    // La jornada anterior deja de emitir antes de observar la nueva.
+    jornada.value = null
+    habitaciones.value = emptyList()
+    ventas.value = emptyList()
+    cierre.value = null
+    dao.crearJornada(Jornada(fecha = selectedDate))
+    val selected = dao.jornadaFecha(selectedDate)
+    jornada.value = selected
+    if (selected != null) coroutineScope {
+     launch { dao.habitaciones(selected.id).collect { habitaciones.value = it } }
+     launch { dao.ventas(selected.id).collect { ventas.value = it } }
+     launch { dao.cierre(selected.id).collect { cierre.value = it } }
+    }
+   }
+  }
+ }
  fun fecha(f:String){ if(runCatching{LocalDate.parse(f)}.isSuccess) fecha.value=f }
  fun guardarHabitacion(id:Long?,num:String,persona:String,monto:String,pago:String){val j=jornada.value?:return; val n=monto.toLongOrNull()?.takeIf{it>=0}?:return; viewModelScope.launch{if(id==null)dao.insertarHabitacion(Habitacion(jornadaId=j.id,numero=num,persona=persona,importe=n,pago=pago)) else {val old=habitaciones.value.firstOrNull{it.id==id}?:return@launch;dao.actualizarHabitacion(old.copy(numero=num,persona=persona,importe=n,pago=pago))}}}
  fun borrar(h:Habitacion)=viewModelScope.launch{dao.borrarHabitacion(h)}
@@ -39,15 +68,212 @@ class CajaVm(private val dao:CajaDao):ViewModel(){
 }
 class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState); val dao=CajaDb.get(this).dao();setContent { val vm: CajaVm=viewModel(factory=object:ViewModelProvider.Factory{override fun <T:ViewModel> create(c:Class<T>):T= CajaVm(dao) as T}); MaterialTheme(colorScheme=lightColorScheme(primary=androidx.compose.ui.graphics.Color(0xFF006B5D),secondary=androidx.compose.ui.graphics.Color(0xFF52645F),background=androidx.compose.ui.graphics.Color(0xFFF4FBF8))){CajaApp(vm)} }}}
 
-@Composable fun CajaApp(vm:CajaVm){val fecha by vm.fecha.collectAsState();val j by vm.jornada.collectAsState();val hs by vm.habitaciones.collectAsState();val vs by vm.ventas.collectAsState();val arts by vm.articulos.collectAsState();val c by vm.cierre.collectAsState();var tab by remember{mutableIntStateOf(0)};var dialog by remember{mutableStateOf("")};var editH by remember{mutableStateOf<Habitacion?>(null)};var editA by remember{mutableStateOf<Articulo?>(null)}
- Scaffold(topBar={TopAppBarSimple()},bottomBar={NavigationBar(modifier=Modifier.windowInsetsPadding(WindowInsets.navigationBars)){listOf("Resumen","Habitaciones","Artículos","Cierre").forEachIndexed{i,s->NavigationBarItem(selected=tab==i,onClick={tab=i},icon={},label={Text(s)})}}}){pad->Column(Modifier.fillMaxSize().padding(pad).padding(horizontal=18.dp)){Spacer(Modifier.height(12.dp));OutlinedTextField(fecha,{vm.fecha(it)},label={Text("Fecha (AAAA-MM-DD)")},modifier=Modifier.fillMaxWidth());Spacer(Modifier.height(10.dp));when(tab){0->{val result=MotorCaja.calcular(hs.map{Linea(it.importe,pago(it.pago))},vs.map{Venta(it.cantidad,it.precioAplicado,pago(it.pago))},c?.efectivo,c?.tarjeta);Text("Jornada ${fecha}",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold);Spacer(Modifier.height(12.dp));SummaryCard("Habitaciones",hs.sumOf{it.importe});SummaryCard("Artículos",vs.sumOf{it.cantidad.toLong()*it.precioAplicado});SummaryCard("Esperado efectivo",result.efectivo);SummaryCard("Esperado tarjeta",result.tarjeta);SummaryCard("Pendiente de clasificar",result.pendiente);SummaryCard("Diferencia efectivo",result.diferenciaEfectivo);SummaryCard("Diferencia tarjeta",result.diferenciaTarjeta);Text(if(result.efectivoInformado==null||result.tarjetaInformado==null)"Cierre incompleto" else if(result.pendiente>0)"Conciliación provisional: hay movimientos sin clasificar" else "Cierre informado",color=MaterialTheme.colorScheme.primary)}
-1->{Row {Text("Ingresos de habitaciones",Modifier.weight(1f),style=MaterialTheme.typography.titleLarge);Button(onClick={editH=null;dialog="habitacion"}){Text("Agregar")}};LazyColumn {items(hs){h->Card(onClick={editH=h;dialog="habitacion"},modifier=Modifier.fillMaxWidth().padding(vertical=4.dp)){Row(Modifier.padding(14.dp)){Column(Modifier.weight(1f)){Text("Habitación ${h.numero.ifBlank{"—"}} · ${h.persona.ifBlank{"Sin nombre"}}",fontWeight=FontWeight.Bold);Text("${money(h.importe)} · ${h.pago}")};TextButton(onClick={vm.borrar(h)}){Text("Borrar")}}}}}}
-2->{Row{Text("Catálogo y ventas",Modifier.weight(1f),style=MaterialTheme.typography.titleLarge);Button(onClick={editA=null;dialog="articulo"}){Text("Nuevo")}};LazyColumn{item{Text("PRODUCTOS",style=MaterialTheme.typography.labelLarge)};items(arts){a->var qty by remember(a.id){mutableStateOf("1")};var pay by remember(a.id){mutableStateOf("EFECTIVO")};Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){TextButton(onClick={editA=a;dialog="articulo"}){Text("${a.nombre} · ${money(a.precio)}")};OutlinedTextField(qty,{qty=it},modifier=Modifier.width(64.dp),label={Text("Cant.")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number));Button(onClick={vm.vender(a,qty,pay)}){Text("Vender")}};var choice by remember(a.id){mutableStateOf(false)};TextButton(onClick={choice=true}){Text("Pago: $pay · Cambiar")};DropdownMenu(choice,{choice=false}){listOf("EFECTIVO","TARJETA","SIN_CLASIFICAR").forEach{DropdownMenuItem(text={Text(it)},onClick={pay=it;choice=false})}}};item{Text("VENTAS DEL DÍA",style=MaterialTheme.typography.labelLarge)};items(vs){v->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("${v.cantidad} × ${v.articuloNombre} · ${money(v.cantidad.toLong()*v.precioAplicado)} (${v.pago})");TextButton(onClick={vm.borrarVenta(v)}){Text("Eliminar")}}}}}
-3->{Text("Cierre de caja",style=MaterialTheme.typography.headlineSmall);Text("Valores informados para comparar; no se suman a los ingresos.");var ev by remember(c?.jornadaId){mutableStateOf(c?.efectivo?.toString().orEmpty())};var ta by remember(c?.jornadaId){mutableStateOf(c?.tarjeta?.toString().orEmpty())};OutlinedTextField(ev,{ev=it},label={Text("Efectivo informado ($)")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),modifier=Modifier.fillMaxWidth());OutlinedTextField(ta,{ta=it},label={Text("Tarjeta informada ($)")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),modifier=Modifier.fillMaxWidth());Button(onClick={vm.guardarCierre(ev,ta)}){Text("Guardar cierre")}}
-}}}
-if(dialog=="habitacion")HabitacionDialog(editH,{dialog=""}){n,p,m,pa->vm.guardarHabitacion(editH?.id,n,p,m,pa);dialog=""}
-if(dialog=="articulo")ArticuloDialog(editA,{dialog=""}){n,p->vm.guardarArticulo(n,p,editA?.id);dialog=""}
+@Composable
+fun CajaApp(vm: CajaVm) {
+    val fecha by vm.fecha.collectAsState()
+    val hs by vm.habitaciones.collectAsState()
+    val vs by vm.ventas.collectAsState()
+    val arts by vm.articulos.collectAsState()
+    val c by vm.cierre.collectAsState()
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var dialog by remember { mutableStateOf("") }
+    var editH by remember { mutableStateOf<Habitacion?>(null) }
+    var editA by remember { mutableStateOf<Articulo?>(null) }
+
+    val secciones = listOf(
+        Triple("Resumen", Icons.Outlined.Home, 0),
+        Triple("Habitaciones", Icons.Outlined.Bed, 1),
+        Triple("Artículos", Icons.Outlined.ShoppingCart, 2),
+        Triple("Cierre", Icons.Outlined.ReceiptLong, 3)
+    )
+
+    Scaffold(
+        topBar = { TopAppBarSimple() },
+        bottomBar = {
+            NavigationBar {
+                secciones.forEach { (label, icon, index) ->
+                    NavigationBarItem(
+                        selected = tab == index,
+                        onClick = { tab = index },
+                        icon = { Icon(icon, contentDescription = null) },
+                        label = { Text(label) },
+                        alwaysShowLabel = true
+                    )
+                }
+            }
+        }
+    ) { pad ->
+        Column(
+            Modifier.fillMaxSize()
+                .padding(pad)
+                .padding(horizontal = 16.dp)
+        ) {
+            Spacer(Modifier.height(12.dp))
+            SelectorJornada(fecha) { vm.fecha(it) }
+            Spacer(Modifier.height(16.dp))
+            when (tab) {
+                0 -> ResumenDiario(hs, vs, c) { tab = it }
+                1 -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            "Ingresos de habitaciones",
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Button(onClick = { editH = null; dialog = "habitacion" }) { Text("Agregar") }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    if (hs.isEmpty()) {
+                        Text("Todavía no hay habitaciones registradas en esta jornada.")
+                    }
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        items(hs, key = { it.id }) { h ->
+                            Card(
+                                onClick = { editH = h; dialog = "habitacion" },
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            ) {
+                                Row(Modifier.padding(14.dp)) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            "Habitación ${h.numero.ifBlank { "—" }} · ${h.persona.ifBlank { "Sin nombre" }}",
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text("${money(h.importe)} · ${h.pago}")
+                                    }
+                                    TextButton(onClick = { vm.borrar(h) }) { Text("Borrar") }
+                                }
+                            }
+                        }
+                    }
+                }
+                2 -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            "Catálogo y ventas",
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Button(onClick = { editA = null; dialog = "articulo" }) { Text("Nuevo") }
+                    }
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        item {
+                            Spacer(Modifier.height(10.dp))
+                            Text("PRODUCTOS", style = MaterialTheme.typography.labelLarge)
+                        }
+                        items(arts, key = { "art-${it.id}" }) { a ->
+                            var qty by remember(a.id) { mutableStateOf("1") }
+                            var pay by remember(a.id) { mutableStateOf("EFECTIVO") }
+                            var menu by remember(a.id) { mutableStateOf(false) }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                TextButton(
+                                    onClick = { editA = a; dialog = "articulo" },
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("${a.nombre} · ${money(a.precio)}") }
+                                OutlinedTextField(
+                                    qty, { qty = it },
+                                    modifier = Modifier.width(72.dp),
+                                    label = { Text("Cant.") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    singleLine = true
+                                )
+                                Button(onClick = { vm.vender(a, qty, pay) }) { Text("Vender") }
+                            }
+                            TextButton(onClick = { menu = true }) { Text("Pago: $pay · Cambiar") }
+                            DropdownMenu(menu, { menu = false }) {
+                                listOf("EFECTIVO", "TARJETA", "SIN_CLASIFICAR").forEach {
+                                    DropdownMenuItem(text = { Text(it) }, onClick = { pay = it; menu = false })
+                                }
+                            }
+                        }
+                        item {
+                            Spacer(Modifier.height(12.dp))
+                            Text("VENTAS DEL DÍA", style = MaterialTheme.typography.labelLarge)
+                        }
+                        items(vs, key = { "venta-${it.id}" }) { v ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(
+                                    "${v.cantidad} × ${v.articuloNombre} · ${money(v.cantidad.toLong() * v.precioAplicado)} (${v.pago})",
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(onClick = { vm.borrarVenta(v) }) { Text("Eliminar") }
+                            }
+                        }
+                    }
+                }
+                3 -> {
+                    Text("Cierre de caja", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Los valores informados se comparan con los ingresos, no se suman nuevamente.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    var ev by remember(c?.jornadaId) { mutableStateOf(c?.efectivo?.toString().orEmpty()) }
+                    var ta by remember(c?.jornadaId) { mutableStateOf(c?.tarjeta?.toString().orEmpty()) }
+                    OutlinedTextField(
+                        ev, { ev = it }, label = { Text("Efectivo informado ($)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        ta, { ta = it }, label = { Text("Tarjeta informada ($)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = { vm.guardarCierre(ev, ta) }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Guardar cierre")
+                    }
+                }
+            }
+        }
+    }
+
+    if (dialog == "habitacion") {
+        HabitacionDialog(editH, { dialog = "" }) { numero, persona, monto, medio ->
+            vm.guardarHabitacion(editH?.id, numero, persona, monto, medio)
+            dialog = ""
+        }
+    }
+    if (dialog == "articulo") {
+        ArticuloDialog(editA, { dialog = "" }) { nombre, precio ->
+            vm.guardarArticulo(nombre, precio, editA?.id)
+            dialog = ""
+        }
+    }
 }
+
+/** Calendario en lugar de un campo ISO imposible de editar parcialmente. */
+@Composable
+fun SelectorJornada(fecha: String, cambiar: (String) -> Unit) {
+    val context = LocalContext.current
+    val date = LocalDate.parse(fecha)
+    val formato = remember { DateTimeFormatter.ofPattern("EEEE d 'de' MMMM yyyy", Locale("es", "UY")) }
+    OutlinedCard(
+        onClick = {
+            DatePickerDialog(
+                context,
+                { _, year, month, day -> cambiar(LocalDate.of(year, month + 1, day).toString()) },
+                date.year,
+                date.monthValue - 1,
+                date.dayOfMonth
+            ).show()
+        },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(Icons.Outlined.ReceiptLong, contentDescription = null)
+            Column(Modifier.weight(1f)) {
+                Text("Jornada", style = MaterialTheme.typography.labelMedium)
+                Text(date.format(formato).replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.titleMedium)
+            }
+            Text("Cambiar", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
 @Composable fun TopAppBarSimple(){Surface(color=MaterialTheme.colorScheme.primary,modifier=Modifier.windowInsetsPadding(WindowInsets.statusBars)){Text("CAJA DIARIA",Modifier.fillMaxWidth().padding(16.dp),color=androidx.compose.ui.graphics.Color.White,fontWeight=FontWeight.Bold)}}
 @Composable fun SummaryCard(label:String,value:Long?){Card(Modifier.fillMaxWidth().padding(vertical=3.dp)){Row(Modifier.padding(horizontal=14.dp,vertical=10.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(label,Modifier.weight(1f));Text(value?.let{money(it)}?:"Sin informar",fontWeight=FontWeight.Bold)}}}
 fun money(n:Long)="${String.format("%,d",n).replace(',', '.') } $"
